@@ -1,0 +1,12 @@
+{
+	"skip_business": true,
+	"skip_non_business": false,
+	"max_followers": 4000,
+	"min_followers": 100,
+	"min_posts": 12,
+	"max_digits_in_profile_name": 4,
+	"follow_private_or_empty": false,
+	"interact_private_only": false,
+	"min_potency_ratio": 0.12,
+	"max_potency_ratio": 9.99
+}
