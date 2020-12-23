@@ -1,7 +1,7 @@
 from functools import partial
 
 from insomniac.action_runners.actions_runners_manager import ActionState
-from insomniac.actions_impl import interact_with_user, InteractionStrategy
+from insomniac.actions_impl import interact_with_user, InteractionStrategy, is_private_account
 from insomniac.actions_providers import Provider
 from insomniac.actions_types import LikeAction, FollowAction, InteractAction, GetProfileAction, StoryWatchAction, \
     BloggerInteractionType
@@ -87,11 +87,11 @@ def handle_blogger(device,
         elif storage.check_user_was_filtered(follower_name):
             print("@" + follower_name + ": already filtered in past. Skip.")
             return False
-        elif not is_myself and storage.check_user_was_interacted_recently(follower_name, hours=168):
-            print("@" + follower_name + ": already interacted in the last week. Skip.")
-            return False
         elif not is_myself and storage.check_user_was_interacted(follower_name):
             print("@" + follower_name + ": already interacted. Skip.")
+            return False
+        elif is_myself and storage.check_user_was_interacted_recently(follower_name):
+            print("@" + follower_name + ": already interacted in the last week. Skip.")
             return False
         elif is_passed_filters is not None:
             if not is_passed_filters(device, follower_name, reset=True, filters_tags=['BEFORE_PROFILE_CLICK']):

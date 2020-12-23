@@ -100,7 +100,7 @@ class Storage:
         if user is None or user[USER_INTERACTIONS_COUNT] == 0:
             return False
 
-        last_interaction = datetime.strptime(user[USER_LAST_INTERACTION], '%Y-%m-%d %H:%M:%S')
+        last_interaction = datetime.strptime(user[USER_LAST_INTERACTION], '%Y-%m-%d %H:%M:%S.%f')
         return datetime.now() - last_interaction <= timedelta(hours=hours)
 
     def check_user_was_scrapped(self, username):
