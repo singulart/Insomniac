@@ -5,7 +5,7 @@ from insomniac.actions_impl import interact_with_user, ScrollEndDetector, open_l
     is_private_account, InteractionStrategy, do_have_story
 from insomniac.actions_providers import Provider
 from insomniac.actions_types import InteractAction, LikeAction, FollowAction, GetProfileAction, StoryWatchAction, \
-    HashtagInteractionType
+    HashtagInteractionType, CommentAction
 from insomniac.device_facade import DeviceFacade
 from insomniac.limits import process_limits
 from insomniac.navigation import search_for
@@ -47,6 +47,8 @@ def handle_hashtag(device,
                    stories_count,
                    follow_percentage,
                    like_percentage,
+                   comment_percentage,
+                   comments_list,
                    storage,
                    on_action,
                    is_limit_reached,
@@ -69,10 +71,6 @@ def handle_hashtag(device,
         elif storage.check_user_was_interacted(liker_username):
             print("@" + liker_username + ": already interacted. Skip.")
             return False
-        elif is_passed_filters is not None:
-            if not is_passed_filters(device, liker_username, reset=True, filters_tags=['BEFORE_PROFILE_CLICK']):
-                storage.add_filtered_user(liker_username)
-                return False
 
         return True
 
@@ -91,6 +89,18 @@ def handle_hashtag(device,
                               get_profile_reached_source_limit, action_status, "Get-Profile"):
             return False
 
+        is_all_filters_satisfied = False
+        if is_passed_filters is not None:
+            print_debug(f"Running filter-ahead on @{liker_username}")
+            should_continue, is_all_filters_satisfied = is_passed_filters(device, liker_username, reset=True,
+                                                                          filters_tags=['BEFORE_PROFILE_CLICK'])
+            if not should_continue:
+                storage.add_filtered_user(liker_username)
+                return True
+
+            if not is_all_filters_satisfied:
+                print_debug("Not all filters are satisfied with filter-ahead, continue filtering inside the profile-page")
+
         print("@" + liker_username + ": interact")
         liker_username_view.click()
         on_action(GetProfileAction(user=liker_username))
@@ -99,17 +109,19 @@ def handle_hashtag(device,
         is_profile_empty = softban_indicator.detect_empty_profile(device)
 
         if is_profile_empty:
-            print("Back to followers list")
+            print("Back to likers list")
             device.back()
             return True
 
         if is_passed_filters is not None:
-            if not is_passed_filters(device, liker_username, reset=False):
-                storage.add_filtered_user(liker_username)
-                # Continue to next follower
-                print("Back to followers list")
-                device.back()
-                return True
+            if not is_all_filters_satisfied:
+                should_continue, _ = is_passed_filters(device, liker_username, reset=False)
+                if not should_continue:
+                    storage.add_filtered_user(liker_username)
+                    # Continue to next follower
+                    print("Back to likers list")
+                    device.back()
+                    return True
 
         is_like_limit_reached, like_reached_source_limit, like_reached_session_limit = \
             is_limit_reached(LikeAction(source=interaction_source, user=liker_username), session_state)
@@ -119,6 +131,9 @@ def handle_hashtag(device,
 
         is_watch_limit_reached, watch_reached_source_limit, watch_reached_session_limit = \
             is_limit_reached(StoryWatchAction(user=liker_username), session_state)
+
+        is_comment_limit_reached, comment_reached_source_limit, comment_reached_session_limit = \
+            is_limit_reached(CommentAction(source=interaction_source, user=liker_username, comment=""), session_state)
 
         is_private = is_private_account(device)
         if is_private:
@@ -131,6 +146,7 @@ def handle_hashtag(device,
         is_likes_enabled = likes_count != '0'
         is_stories_enabled = stories_count != '0'
         is_follow_enabled = follow_percentage != 0
+        is_comment_enabled = comment_percentage != 0
 
         likes_value = get_value(likes_count, "Likes count: {}", 2, max_count=12)
         stories_value = get_value(stories_count, "Stories to watch: {}", 1)
@@ -138,7 +154,8 @@ def handle_hashtag(device,
         can_like = not is_like_limit_reached and not is_private and likes_value > 0
         can_follow = (not is_follow_limit_reached) and storage.get_following_status(liker_username) == FollowingStatus.NONE and follow_percentage > 0
         can_watch = (not is_watch_limit_reached) and do_have_stories and stories_value > 0
-        can_interact = can_like or can_follow or can_watch
+        can_comment = (not is_comment_limit_reached) and not is_private and comment_percentage > 0
+        can_interact = can_like or can_follow or can_watch or can_comment
 
         if not can_interact:
             print("@" + liker_username + ": Cant be interacted (due to limits / already followed). Skip.")
@@ -149,18 +166,20 @@ def handle_hashtag(device,
                                         provider=Provider.INTERACTION)
             on_action(InteractAction(source=interaction_source, user=liker_username, succeed=False))
         else:
-            print_interaction_types(liker_username, can_like, can_follow, can_watch)
+            print_interaction_types(liker_username, can_like, can_follow, can_watch, can_comment)
             interaction_strategy = InteractionStrategy(do_like=can_like,
                                                        do_follow=can_follow,
                                                        do_story_watch=can_watch,
+                                                       do_comment=can_comment,
                                                        likes_count=likes_value,
                                                        follow_percentage=follow_percentage,
                                                        like_percentage=like_percentage,
-                                                       stories_count=stories_value)
+                                                       stories_count=stories_value,
+                                                       comment_percentage=comment_percentage,
+                                                       comments_list=comments_list)
 
-            is_liked, is_followed, is_watch = interaction(username=liker_username,
-                                                          interaction_strategy=interaction_strategy)
-            if is_liked or is_followed or is_watch:
+            is_liked, is_followed, is_watch, is_commented = interaction(username=liker_username, interaction_strategy=interaction_strategy)
+            if is_liked or is_followed or is_watch or is_commented:
                 storage.add_interacted_user(liker_username,
                                             followed=is_followed,
                                             source=f"#{hashtag}",
@@ -179,8 +198,9 @@ def handle_hashtag(device,
         can_continue = True
 
         if ((is_like_limit_reached and is_likes_enabled) or not is_likes_enabled) and \
-                ((is_follow_limit_reached and is_follow_enabled) or not is_follow_enabled) and \
-                ((is_watch_limit_reached and is_stories_enabled) or not is_stories_enabled):
+           ((is_follow_limit_reached and is_follow_enabled) or not is_follow_enabled) and \
+           ((is_comment_limit_reached and is_comment_enabled) or not is_comment_enabled) and \
+           ((is_watch_limit_reached and is_stories_enabled) or not is_stories_enabled):
             # If one of the limits reached for source-limit, move to next source
             if (like_reached_source_limit is not None and like_reached_session_limit is None) or \
                     (follow_reached_source_limit is not None and follow_reached_session_limit is None):
@@ -229,14 +249,26 @@ def extract_hashtag_profiles_and_interact(device,
 
         sleeper.random_sleep()
 
-    # Open first post
-    print("Opening the first post")
+    # Open post
     # Index 1 is reserved for hot Reels by this tag
     first_post_index = 2 if instructions == HashtagInteractionType.TOP_LIKERS else 1
-    first_post_view = device.find(resourceId=f'{device.app_id}:id/image_button',
-                                  className='android.widget.ImageView',
-                                  index=first_post_index)
-    first_post_view.click()
+    post_num = randint(first_post_index, 20)
+    print(f"Opening post #{post_num}")
+    post_view = device.find(resourceId=f'{device.app_id}:id/image_button',
+                            className='android.widget.ImageView',
+                            index=post_num)
+
+    for _ in range(0, 10):
+        if post_view.exists(quick=True):
+            break
+
+        print(f"Cannot find post #{post_num}. Swiping down a bit.")
+        device.swipe(DeviceFacade.Direction.TOP)
+
+    if not post_view.exists(quick=True):
+        print(f"Cannot find post #{post_num} after 10 swipes. Aborting.")
+
+    post_view.click()
     sleeper.random_sleep()
 
     posts_list_view = device.find(resourceId='android:id/list',

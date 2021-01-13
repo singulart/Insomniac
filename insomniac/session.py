@@ -16,8 +16,9 @@ from insomniac.session_state import SessionState
 from insomniac.sessions import Sessions
 from insomniac.sleeper import sleeper
 from insomniac.softban_indicator import ActionBlockedError
-from insomniac.storage import STORAGE_ARGS, Storage
+from insomniac.storage import STORAGE_ARGS, Storage, DatabaseMigrationFailedException
 from insomniac.utils import *
+from insomniac.views import UserSwitchFailedException
 
 sessions = Sessions()
 
@@ -55,20 +56,38 @@ class InsomniacSession(object):
             "default": 'com.instagram.android'
         },
         "dont_indicate_softban": {
-            "help": "by default, Insomniac tried to indicate if there is a softban on your acoount. set this flag in "
-                    "order to ignore those soft-ban indicators",
+            "help": "by default Insomniac tries to indicate if there is a softban on your acoount. Set this flag in "
+                    "order to ignore those softban indicators",
             'action': 'store_true',
             "default": False
         },
         "debug": {
-            'help': 'add this flag to insomniac in debug mode (more verbose logs)',
+            'help': 'add this flag to run insomniac in debug mode (more verbose logs)',
             'action': 'store_true'
-        }
+        },
+        "username": {
+            "help": 'if you have configured multiple Instagram accounts in your app, use this parameter in order to '
+                    'switch into a specific one. Not trying to switch account by default. '
+                    'If the account does not exist - the session won\'t start',
+            "metavar": 'my_account_name',
+            "default": None
+        },
+        "next_config_file": {
+            "help": 'configuration that will be loaded after session is finished and the bot \"sleeps\" for time '
+                    'specified by the \"--repeat\" argument. You can use this argument to run multiple Insomniac '
+                    'sessions one by one with different parameters. E.g. different action (interact and then unfollow),'
+                    ' or different \"--username\". By default uses the same config file as been loaded for the first '
+                    'session. Note that you must use \"--repeat\" with this argument!',
+            "metavar": 'CONFIG_FILE',
+            "default": None
+        },
     }
 
     repeat = None
     device = None
     old = None
+    username = None
+    next_config_file = None
 
     def __init__(self):
         random.seed()
@@ -89,7 +108,16 @@ class InsomniacSession(object):
 
         return all_args
 
+    def reset_params(self):
+        self.repeat = None
+        self.username = None
+        self.next_config_file = None
+        insomniac.__version__.__debug_mode__ = False
+        insomniac.softban_indicator.should_indicate_softban = True
+
     def set_session_args(self, args):
+        self.reset_params()
+
         if args.repeat is not None:
             self.repeat = get_value(args.repeat, "Sleep time (min) before repeat: {}", 180)
 
@@ -99,21 +127,29 @@ class InsomniacSession(object):
         if args.dont_indicate_softban:
             insomniac.softban_indicator.should_indicate_softban = False
 
-    def parse_args_and_get_device_wrapper(self):
+        if args.username is not None:
+            self.username = args.username
+
+        if args.next_config_file is not None:
+            self.next_config_file = args.next_config_file
+
+    def parse_args(self):
         ok, args = parse_arguments(self.get_session_args())
         if not ok:
-            return None, None, None
+            return None
+        return args
 
+    def get_device_wrapper(self, args):
         device_wrapper = DeviceWrapper(args.device, args.old, args.wait_for_device, args.app_id)
         device = device_wrapper.get()
         if device is None:
-            return None, None, None
+            return None, None
 
         app_version = get_instagram_version(args.device, args.app_id)
 
         print("Instagram version: " + app_version)
 
-        return args, device_wrapper, app_version
+        return device_wrapper, app_version
 
     def start_session(self, args, device_wrapper, app_version):
         self.session_state = SessionState()
@@ -125,11 +161,14 @@ class InsomniacSession(object):
 
         print_timeless(COLOR_REPORT + "\n-------- START: " + str(self.session_state.startTime) + " --------" + COLOR_ENDC)
 
+        close_instagram(device_wrapper.device_id, device_wrapper.app_id)
+        sleeper.random_sleep()
+
         open_instagram(args.device, args.app_id)
         sleeper.random_sleep()
         self.session_state.my_username, \
             self.session_state.my_followers_count, \
-            self.session_state.my_following_count = get_my_profile_info(device_wrapper.get())
+            self.session_state.my_following_count = get_my_profile_info(device_wrapper.get(), self.username)
 
         return self.session_state
 
@@ -147,7 +186,7 @@ class InsomniacSession(object):
         print("Sleep for {} minutes".format(self.repeat))
         try:
             sleep(60 * self.repeat)
-            refresh_args_by_conf_file(args)
+            return refresh_args_by_conf_file(args, self.next_config_file)
         except KeyboardInterrupt:
             print_full_report(self.sessions)
             self.sessions.persist(self.session_state.my_username)
@@ -157,17 +196,28 @@ class InsomniacSession(object):
         self.session_state.add_action(action)
         self.limits_mgr.update_state(action)
 
+    def print_session_params(self, args):
+        print_debug("All parameters:")
+        for k, v in vars(args).items():
+            print_debug(f"{k}: {v} (value-type: {type(v)})")
+
     def run(self):
-        args, device_wrapper, app_version = self.parse_args_and_get_device_wrapper()
-        if args is None or device_wrapper is None:
+        args = self.parse_args()
+        if args is None:
             return
 
-        if not args.no_speed_check:
-            print("Checking your Internet speed to adjust the script speed, please wait for a minute...")
-            print("(use " + COLOR_BOLD + "--no-speed-check" + COLOR_ENDC + " to skip this check)")
-            sleeper.update_random_sleep_range()
-
         while True:
+            self.print_session_params(args)
+
+            if not args.no_speed_check:
+                print("Checking your Internet speed to adjust the script speed, please wait for a minute...")
+                print("(use " + COLOR_BOLD + "--no-speed-check" + COLOR_ENDC + " to skip this check)")
+                sleeper.update_random_sleep_range()
+
+            device_wrapper, app_version = self.get_device_wrapper(args)
+            if device_wrapper is None:
+                return
+
             self.set_session_args(args)
 
             action_runner = self.actions_mgr.select_action_runner(args)
@@ -188,7 +238,7 @@ class InsomniacSession(object):
                                   self.session_state,
                                   self.on_action_callback,
                                   self.limits_mgr.is_limit_reached_for_action)
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, UserSwitchFailedException, DatabaseMigrationFailedException):
                 self.end_session(device_wrapper)
                 return
             except ActionBlockedError as ex:
@@ -206,6 +256,7 @@ class InsomniacSession(object):
             
             self.end_session(device_wrapper)
             if self.repeat is not None:
-                self.repeat_session(args)
+                if not self.repeat_session(args):
+                    break
             else:
                 break
