@@ -12,8 +12,8 @@ from insomniac.views import ActionBarView
 FOLLOWERS_BUTTON_ID_REGEX = '{0}:id/row_profile_header_followers_container' \
                             '|{1}:id/row_profile_header_container_followers'
 TEXTVIEW_OR_BUTTON_REGEX = 'android.widget.TextView|android.widget.Button'
-FOLLOW_REGEX = 'Follow|Follow Back'
-UNFOLLOW_REGEX = 'Following|Requested'
+FOLLOW_REGEX = 'Follow'
+UNFOLLOW_REGEX = 'Following|Requested|Follow Back'
 SHOP_REGEX = 'Add Shop|View Shop'
 FOLLOWING_BUTTON_ID_REGEX = '{0}:id/row_profile_header_following_container' \
                             '|{1}:id/row_profile_header_container_following'
@@ -368,6 +368,13 @@ def _follow(device, username, follow_percentage, is_scrolled_down):
             print(COLOR_FAIL + "Cannot find profile actions." + COLOR_ENDC)
             return False
 
+        if no_follow_action_needed(device):
+            print(COLOR_FAIL + """Follow will not be done! 
+            User either follows me already, 
+            or I follow this user already, 
+            or follow was requested.""" + COLOR_ENDC)
+            return False
+        
         follow_button = profile_header_actions_layout.child(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
                                                             clickable=True,
                                                             textMatches=FOLLOW_REGEX)
@@ -399,6 +406,16 @@ def do_have_story(device):
 
 
 def is_already_followed(device):
+    # Using main layout in order to support shop pages
+    profile_header_main_layout = device.find(resourceId=f"{device.app_id}:id/profile_header_fixed_list",
+                                             className='android.widget.LinearLayout')
+    unfollow_button = profile_header_main_layout.child(classNameMatches=TEXTVIEW_OR_BUTTON_REGEX,
+                                                       clickable=True,
+                                                       textMatches=UNFOLLOW_REGEX)
+    return unfollow_button.exists(quick=True)
+
+
+def no_follow_action_needed(device):
     # Using main layout in order to support shop pages
     profile_header_main_layout = device.find(resourceId=f"{device.app_id}:id/profile_header_fixed_list",
                                              className='android.widget.LinearLayout')
