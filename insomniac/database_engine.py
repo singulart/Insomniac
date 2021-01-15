@@ -521,6 +521,36 @@ def add_sessions(address, session_states):
             connection.close()
 
 
+def get_sessions(address):
+    connection = None
+    try:
+        connection = sqlite3.connect(address)
+        connection.row_factory = sqlite3.Row
+        cursor = connection.cursor()
+        cursor.execute(""" SELECT DISTINCT
+        app_version,
+        total_interactions,
+        successful_interactions,
+        total_followed,
+        total_likes,
+        total_unfollowed,
+        total_stories_watched,
+        total_get_profile,
+        total_scraped,
+        removed_mass_followers,
+        start_time,
+        finish_time,
+        args 
+        FROM SESSIONS;""")
+        return cursor.fetchall()
+    except Exception as e:
+        print(COLOR_FAIL + f"[Database] Cannot add sessions: {e}" + COLOR_ENDC)
+    finally:
+        if connection:
+            # Close the opened connection
+            connection.close()
+
+
 def _run_migrations(cursor):
     current_version = _get_database_version(cursor)
     latest_version = max(DB_VERSIONS.values())
