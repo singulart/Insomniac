@@ -724,6 +724,11 @@ def do_unfollow(device, my_username, username, storage, check_if_is_follower, us
         print("Unfollowing a profile directly from the following list.")
         follow_status_button_view.click()
     else:
+        if check_if_is_follower and _check_is_follower_local(device, username, my_username):
+            print("Skip @" + username + ". This user is following you.")
+            storage.update_follow_status(username, True, True)
+            return False
+
         print("Unfollowing a profile from his profile page.")
         username_view.click()
         on_action(GetProfileAction(user=username))
@@ -731,13 +736,6 @@ def do_unfollow(device, my_username, username, storage, check_if_is_follower, us
         if_profile_empty = softban_indicator.detect_empty_profile(device)
 
         if if_profile_empty:
-            print("Back to the followings list.")
-            device.back()
-            return False
-
-        if check_if_is_follower and _check_is_follower(device, username, my_username):
-            print("Skip @" + username + ". This user is following you.")
-            storage.update_follow_status(username, True, True)
             print("Back to the followings list.")
             device.back()
             return False
@@ -811,6 +809,17 @@ def _check_is_follower(device, username, my_username):
         print("Back to the profile.")
         device.back()
         return result
+
+
+def _check_is_follower_local(device, username, my_username):
+    print(COLOR_OKGREEN + "Check if @" + username + " is following you using local followers file." + COLOR_ENDC)
+
+    follower_handles = []
+    with open("".join([my_username, '/', my_username, '_followers.json'])) as json_file:
+        followerz = json.load(json_file)
+    json_file.close()
+    follower_handles = [user['username'] for user in followerz if 'username' in user.keys()]
+    return username in follower_handles
 
 
 def _close_confirm_dialog_if_shown(device):
