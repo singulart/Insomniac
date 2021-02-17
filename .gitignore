@@ -1,14 +1,11 @@
 bpython
 /venv*
 /.idea
-interacted_users.*
-scrapped_users.json
-filtered_users.json
-sessions.json
+interaction_data.db
 targets.txt
+targets_loaded.txt
 *.pyc
 .DS_Store
-screenshots
 crashes
 filter.json
 whitelist.txt
@@ -16,3 +13,4 @@ blacklist.txt
 /build
 /dist
 /*.egg-info
+*.log

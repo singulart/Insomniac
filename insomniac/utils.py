@@ -14,7 +14,7 @@ from time import sleep
 from urllib.error import URLError
 from urllib.parse import urlparse
 
-from insomniac.__version__ import __version__, __debug_mode__
+import insomniac.__version__ as __version__
 
 COLOR_HEADER = '\033[95m'
 COLOR_OKBLUE = '\033[94m'
@@ -30,7 +30,7 @@ def print_version():
     def versiontuple(v):
         return tuple(map(int, (v.split("."))))
 
-    current_version = __version__
+    current_version = __version__.__version__
     print_timeless(COLOR_HEADER + f"Insomniac v{current_version}" + COLOR_ENDC)
     latest_version = _get_latest_version('insomniac')
     if latest_version is not None and versiontuple(latest_version) > versiontuple(current_version):
@@ -50,6 +50,23 @@ def get_instagram_version(device_id, app_id):
         version = "not found"
     stream.close()
     return version
+
+
+def get_connected_devices_adb_ids():
+    stream = os.popen('adb devices')
+    output = stream.read()
+    devices_count = len(re.findall('device\n', output))
+    stream.close()
+
+    if devices_count == 0:
+        return []
+
+    devices = []
+    for line in output.split('\n'):
+        if '\tdevice' in line:
+            devices.append(line.split('\t')[0])
+
+    return devices
 
 
 def check_adb_connection(device_id, wait_for_device):
@@ -131,6 +148,12 @@ def close_instagram(device_id, app_id):
              f" shell am force-stop {app_id}").close()
 
 
+def clear_instagram_data(device_id, app_id):
+    print("Clear Instagram data")
+    os.popen("adb" + ("" if device_id is None else " -s " + device_id) +
+             f" shell pm clear {app_id}").close()
+
+
 def save_crash(device, ex=None):
     global print_log
 
@@ -181,7 +204,7 @@ def print_copyright():
 
 def _print_with_time_decorator(standard_print, print_time, debug):
     def wrapper(*args, **kwargs):
-        if debug and not __debug_mode__:
+        if debug and not __version__.__debug_mode__:
             return
 
         global print_log
