@@ -296,7 +296,7 @@ def extract_hashtag_profiles_and_interact(device,
     # Open post
     # Index 1 is reserved for hot Reels by this tag
     first_post_index = 2 if instructions == HashtagInteractionType.TOP_LIKERS else 1
-    post_num = randint(first_post_index, 20)
+    post_num = randint(first_post_index, 11)
     print(f"Opening post #{post_num}")
     post_view = device.find(resourceId=f'{device.app_id}:id/image_button',
                             className='android.widget.ImageView',

@@ -549,7 +549,7 @@ def dict_factory(cursor, row):
     return d
 
 
-def get_sessions(address):
+def get_sessions(address, period_days=30):
     connection = None
     try:
         connection = sqlite3.connect(address)
@@ -569,10 +569,11 @@ def get_sessions(address):
         start_time,
         finish_time,
         args 
-        FROM SESSIONS;""")
+        FROM SESSIONS
+        WHERE start_time > DATETIME('now', '-%d days');""" % period_days)
         return cursor.fetchall()
     except Exception as e:
-        print(COLOR_FAIL + f"[Database] Cannot add sessions: {e}" + COLOR_ENDC)
+        print(COLOR_FAIL + f"[Database] Cannot get sessions: {e}" + COLOR_ENDC)
     finally:
         if connection:
             # Close the opened connection

@@ -44,4 +44,5 @@ font = {'family': 'monospace',
 plt.xticks(np.arange(len(dates) * 2, step=2), dates, rotation=90, **font)
 plt.yticks(np.arange(1200, step=100))
 plt.legend()
+plt.grid()
 plt.show()
