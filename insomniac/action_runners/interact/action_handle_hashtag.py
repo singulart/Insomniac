@@ -1,5 +1,5 @@
 from functools import partial
-
+from insomniac.counters import to_int
 from insomniac.action_runners.actions_runners_manager import ActionState
 from insomniac.actions_impl import interact_with_user, ScrollEndDetector, open_likers, iterate_over_likers, \
     is_private_account, InteractionStrategy, do_have_story
@@ -106,10 +106,54 @@ def handle_hashtag(device,
         on_action(GetProfileAction(user=liker_username))
 
         sleeper.random_sleep()
-        is_profile_empty = softban_indicator.detect_empty_profile(device)
+        post_count = None
+        followers_count = None
+        following_count = None
 
-        if is_profile_empty:
-            print("Back to likers list")
+        post_count_el = device.find(resourceId='com.instagram.android:id/row_profile_header_textview_post_count',
+                                    className='android.widget.TextView')
+        if post_count_el.exists():
+            post_count = to_int(post_count_el.get_text())
+
+        followers_count_el = device.find(resourceId='com.instagram.android:id/row_profile_header_textview_followers_count',
+                                         className='android.widget.TextView')
+        if followers_count_el.exists():
+            followers_count = to_int(followers_count_el.get_text())
+
+        following_count_el = device.find(resourceId='com.instagram.android:id/row_profile_header_textview_following_count',
+                                         className='android.widget.TextView')
+        if following_count_el.exists():
+            following_count = to_int(following_count_el.get_text())
+
+        print("@%s (PC=%s ERS=%s ING=%s): interact" % (liker_username, post_count, followers_count, following_count))
+
+        with open('filters.json') as json_file:
+            filterz = json.load(json_file)
+        json_file.close()
+
+        skip = False
+        if post_count and post_count < filterz['min_posts']:
+            skip = True
+            print('Skip because of %s < min_posts' % post_count)
+        if followers_count and followers_count < filterz['min_followers']:
+            skip = True
+            print('Skip because of %s < min_followers' % followers_count)
+        if followers_count and followers_count > filterz['max_followers']:
+            skip = True
+            print('Skip because of %s > max_followers' % followers_count)
+        if followers_count and following_count and followers_count / (following_count + 1) < filterz['min_potency_ratio']:
+            skip = True
+            print('Skip because of %s < min_potency_ratio' % (followers_count / (following_count + 1)))
+        if followers_count and following_count and followers_count / (following_count + 1) > filterz['max_potency_ratio']:
+            skip = True
+            print('Skip because of %s > max_potency_ratio' % (followers_count / (following_count + 1)))
+        if not filterz['follow_private_or_empty'] and is_private_account(device):
+            skip = True
+            print('Skipping private account')
+
+        if skip:
+            storage.add_filtered_user(liker_username)
+            # Continue to next follower
             device.back()
             return True
 
