@@ -1,6 +1,6 @@
 from enum import unique, Enum
 from random import shuffle, choice
-
+import json
 from insomniac.actions_types import LikeAction, FollowAction, GetProfileAction, StoryWatchAction, CommentAction
 from insomniac.device_facade import DeviceFacade
 from insomniac.navigation import switch_to_english, search_for, LanguageChangedException

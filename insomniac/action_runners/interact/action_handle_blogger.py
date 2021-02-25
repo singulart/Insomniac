@@ -13,6 +13,7 @@ from insomniac.storage import FollowingStatus
 from insomniac.utils import *
 from insomniac.views import TabBarView, ProfileView
 from insomniac.counters import to_int
+import json
 
 
 def extract_blogger_instructions(source):
@@ -161,19 +162,19 @@ def handle_blogger(device,
         if post_count and post_count < filterz['min_posts']:
             skip = True
             print('Skip because of %s < min_posts' % post_count)
-        if followers_count and followers_count < filterz['min_followers']:
+        if not skip and followers_count and followers_count < filterz['min_followers']:
             skip = True
             print('Skip because of %s < min_followers' % followers_count)
-        if followers_count and followers_count > filterz['max_followers']:
+        if not skip and followers_count and followers_count > filterz['max_followers']:
             skip = True
             print('Skip because of %s > max_followers' % followers_count)
-        if followers_count and following_count and followers_count / (following_count + 1) < filterz['min_potency_ratio']:
+        if not skip and followers_count and following_count and followers_count / (following_count + 1) < filterz['min_potency_ratio']:
             skip = True
             print('Skip because of %s < min_potency_ratio' % (followers_count / (following_count + 1)))
-        if followers_count and following_count and followers_count / (following_count + 1) > filterz['max_potency_ratio']:
+        if not skip and followers_count and following_count and followers_count / (following_count + 1) > filterz['max_potency_ratio']:
             skip = True
             print('Skip because of %s > max_potency_ratio' % (followers_count / (following_count + 1)))
-        if not filterz['follow_private_or_empty'] and is_private_account(device):
+        if not skip and not filterz['follow_private_or_empty'] and is_private_account(device):
             skip = True
             print('Skipping private account')
 

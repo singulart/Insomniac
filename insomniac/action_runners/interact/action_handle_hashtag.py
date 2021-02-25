@@ -11,6 +11,7 @@ from insomniac.limits import process_limits
 from insomniac.navigation import search_for
 from insomniac.report import print_short_report, print_interaction_types
 from insomniac.sleeper import sleeper
+import json
 from insomniac.softban_indicator import softban_indicator
 from insomniac.storage import FollowingStatus
 from insomniac.utils import *
@@ -138,19 +139,19 @@ def handle_hashtag(device,
         if post_count and post_count < filterz['min_posts']:
             skip = True
             print('Skip because of %s < min_posts' % post_count)
-        if followers_count and followers_count < filterz['min_followers']:
+        if not skip and followers_count and followers_count < filterz['min_followers']:
             skip = True
             print('Skip because of %s < min_followers' % followers_count)
-        if followers_count and followers_count > filterz['max_followers']:
+        if not skip and followers_count and followers_count > filterz['max_followers']:
             skip = True
             print('Skip because of %s > max_followers' % followers_count)
-        if followers_count and following_count and followers_count / (following_count + 1) < filterz['min_potency_ratio']:
+        if not skip and followers_count and following_count and followers_count / (following_count + 1) < filterz['min_potency_ratio']:
             skip = True
             print('Skip because of %s < min_potency_ratio' % (followers_count / (following_count + 1)))
-        if followers_count and following_count and followers_count / (following_count + 1) > filterz['max_potency_ratio']:
+        if not skip and followers_count and following_count and followers_count / (following_count + 1) > filterz['max_potency_ratio']:
             skip = True
             print('Skip because of %s > max_potency_ratio' % (followers_count / (following_count + 1)))
-        if not filterz['follow_private_or_empty'] and is_private_account(device):
+        if not skip and not filterz['follow_private_or_empty'] and is_private_account(device):
             skip = True
             print('Skipping private account')
 
